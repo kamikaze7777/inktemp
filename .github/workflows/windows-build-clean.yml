@@ -1,0 +1,20 @@
+name: Inkscape Windows Clean Build (on-demand)
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publish the resulting .exe as a GitHub Release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  clean-build:
+    uses: ./.github/workflows/_build-windows.yml
+    with:
+      clean: true
+      publish_release: ${{ inputs.publish_release }}
+    secrets: inherit

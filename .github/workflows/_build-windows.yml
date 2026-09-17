@@ -1,0 +1,110 @@
+name: (reusable) Windows Build
+
+on:
+  workflow_call:
+    inputs:
+      clean:
+        description: "If true, skip all caches for a true from-scratch build"
+        required: false
+        type: boolean
+        default: false
+      publish_release:
+        description: "If true, publish the built .exe as a GitHub Release"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build, Package${{ inputs.publish_release && ', and Release' || '' }}
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: git mingw-w64-ucrt-x86_64-ccache
+
+      # --- Caching (skipped entirely on a clean build) ---
+
+      - name: Cache MSYS2 package cache
+        if: ${{ !inputs.clean }}
+        uses: actions/cache@v4
+        with:
+          path: D:/a/_temp/msys64/var/cache/pacman/pkg
+          key: msys2-pkgs-${{ hashFiles('buildtools/msys2installdeps.sh') }}
+          restore-keys: msys2-pkgs-
+
+      - name: Cache ccache directory
+        if: ${{ !inputs.clean }}
+        uses: actions/cache@v4
+        with:
+          path: C:/Users/runneradmin/AppData/Local/ccache
+          key: ccache-${{ github.sha }}
+          restore-keys: ccache-
+
+      - name: Cache build directory (incremental Ninja)
+        if: ${{ !inputs.clean }}
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: build-${{ hashFiles('CMakeLists.txt', 'src/**/CMakeLists.txt') }}
+          restore-keys: build-
+
+      # --- Build ---
+
+      - name: Install Inkscape Dependencies
+        env:
+          PACMAN_OPTIONS: --noconfirm --needed
+        run: |
+          bash buildtools/msys2installdeps.sh
+
+      - name: Patch MSYS2 Class Tag Mismatch
+        run: |
+          find /ucrt64/include/gtkmm-4.0/ /ucrt64/include/giomm-2.68/ -type f \( -name "*.h" -o -name "*.hh" \) -exec sed -i -E '/using (GDBusActionGroup|GEmblem|Gdk(Cursor|Drag|Texture|Device|Monitor|ContentProvider|Display|Clipboard)|Gtk(StyleContext|Widget|WindowGroup|Window))Class = struct _[A-Za-z0-9_]+Class;/d' {} +
+
+      - name: Configure CMake
+        run: |
+          mkdir -p build
+          cd build
+          cmake -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DWITH_INTERNAL_2GEOM=ON \
+            ${{ !inputs.clean && '-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache' || '' }} \
+            ..
+
+      - name: Compile Inkscape
+        run: |
+          cd build
+          ninja
+
+      - name: Create .exe Installer
+        run: |
+          cd build
+          cpack -G NSIS
+
+      - name: Publish to GitHub Releases
+        if: ${{ inputs.publish_release }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: temp-build-${{ github.run_number }}${{ inputs.clean && '-clean' || '' }}
+          name: Temporary Inkscape Build #${{ github.run_number }}${{ inputs.clean && ' (clean)' || '' }}
+          files: build/*.exe
+          draft: false
+          prerelease: true
