@@ -1,0 +1,68 @@
+name: Inkscape Windows Build & Release
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write 
+
+jobs:
+  build-and-release:
+    name: Build, Package, and Release
+    runs-on: windows-latest
+    
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+          
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: git
+          
+      - name: Install Inkscape Dependencies
+        env:
+          PACMAN_OPTIONS: --noconfirm --needed 
+        run: |
+          bash buildtools/msys2installdeps.sh
+
+      - name: Patch MSYS2 Class Tag Mismatch
+        run: |
+          # Remove only aliases that conflict with class typedefs emitted by GTK4.
+          find /ucrt64/include/gtkmm-4.0/ /ucrt64/include/giomm-2.68/ -type f \( -name "*.h" -o -name "*.hh" \) -exec sed -i -E '/using (GDBusActionGroup|GEmblem|Gdk(Cursor|Drag|Texture|Device|Monitor|ContentProvider|Display|Clipboard)|Gtk(StyleContext|Widget|WindowGroup|Window))Class = struct _[A-Za-z0-9_]+Class;/d' {} +
+
+      - name: Configure CMake
+        run: |
+          mkdir build
+          cd build
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DWITH_INTERNAL_2GEOM=ON ..
+          
+      - name: Compile Inkscape
+        run: |
+          cd build
+          ninja
+          
+      - name: Create .exe Installer
+        run: |
+          cd build
+          cpack -G NSIS
+          
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: temp-build-${{ github.run_number }}
+          name: Temporary Inkscape Build #${{ github.run_number }}
+          files: build/*.exe
+          draft: false
+          prerelease: true
