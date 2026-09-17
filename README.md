@@ -34,5 +34,3 @@ processes.
 - [Developer Documentation](doc/readme.md)
 - [Report Bugs](https://inkscape.org/contribute/report-bugs/)
 =======
-# inktemp
->>>>>>> f2521915cfa99b71f3b6ebcc65de12f732405be9
