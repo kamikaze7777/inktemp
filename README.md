@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 Inkscape. Draw Freely.
 ======================
 
