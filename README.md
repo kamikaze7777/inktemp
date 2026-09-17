@@ -33,4 +33,5 @@ processes.
 - [User Documentation](https://inkscape.org/learn/)
 - [Developer Documentation](doc/readme.md)
 - [Report Bugs](https://inkscape.org/contribute/report-bugs/)
-=======
+
+
